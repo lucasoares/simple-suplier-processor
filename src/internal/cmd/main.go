@@ -241,9 +241,9 @@ loop:
 		globalFile.SetCellFormula(n, cell, fmt.Sprintf("100*%c%d/%c%d", diffPriceColumn, i, bestPriceColumn, i))
 		globalFile.SetCellStyle(n, cell, cell, decimalStyle)
 	}
-	globalFile.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+2), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"50"}]`, redStyle))
-	globalFile.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+2), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"20"}]`, yellowStyle))
-	globalFile.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+2), fmt.Sprintf(`[{"type":"cell","criteria":"<=","format":%d,"value":"20"}]`, greenStyle))
+	globalFile.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"50"}]`, redStyle))
+	globalFile.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"20"}]`, yellowStyle))
+	globalFile.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":"<=","format":%d,"value":"20"}]`, greenStyle))
 
 	// Auto Filter
 	globalFile.AutoFilter(n, "A1", fmt.Sprintf("%c1", pricePercentageColumn), "")
