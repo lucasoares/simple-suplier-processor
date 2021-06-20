@@ -27,9 +27,9 @@ func ParseSuppliers(files []*excelize.File) []*Supplier {
 	result := make([]*Supplier, 0)
 
 	for _, file := range files {
-		regex, _ := regexp.Compile(".+[\\\\\\/](.+?).xlsx")
+		regex, _ := regexp.Compile("(.*[\\\\\\/])?(.+)\\.xlsx")
 
-		name := regex.ReplaceAllString(file.Path, "$1")
+		name := regex.ReplaceAllString(file.Path, "$2")
 
 		supplier := &Supplier{
 			Name:                name,
