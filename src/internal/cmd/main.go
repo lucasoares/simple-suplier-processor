@@ -16,7 +16,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -33,16 +32,6 @@ type Opts struct {
 	Folder string `short:"f" long:"folder" description:"folder to process" required:"false" value-name:"FOLDER"`
 }
 
-func main2() {
-	file, _ := excelize.OpenFile("./resultado/geral.xlsx")
-
-	data, _ := file.GetCellStyle("Geral", "K5")
-
-	fmt.Println(fmt.Sprintf("STYLE: %d", data))
-	result, _ := json.Marshal(file.Styles)
-	fmt.Println(fmt.Sprintf("%s", string(result)))
-}
-
 func main() {
 	var opts Opts
 
@@ -53,7 +42,7 @@ func main() {
 	}
 
 	if opts.Folder == "" {
-		opts.Folder = "../../data/"
+		opts.Folder = "./"
 	}
 
 	if !strings.HasSuffix(opts.Folder, "/") {
