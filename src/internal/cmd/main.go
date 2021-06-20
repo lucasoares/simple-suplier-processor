@@ -62,11 +62,89 @@ func main() {
 	} else if filesCount == 1 {
 		fmt.Println("Computando resultado de fornecedores.")
 
+		computeResultSheets(opts.Folder)
 	} else {
-		fmt.Println("ERRO - Diretório 'resultado' ja está preenchido. Exclua os arquivos e rode novamente.")
+		fmt.Println("ERRO - Diretório 'resultado' ja está totalmente preenchido.\nExclua os arquivos com exceção do arquivo 'resultado/resultado_geral.xlsx' e rode novamente.")
 	}
 
 	exitProgram()
+}
+
+func computeResultSheets(folder string) {
+	file, err := excelize.OpenFile("resultado/resultado_geral.xlsx")
+
+	if err != nil {
+		exitWithError(err)
+	}
+
+	result := src.ParseGlobalFile(file)
+
+	totalSuppliers := len(result)
+	if _, ok := result["sem_fornecedor"]; ok {
+		totalSuppliers--
+	}
+
+	fmt.Println()
+	if totalSuppliers == 1 {
+		fmt.Println("1 fornecedor no resultado:")
+	} else {
+		fmt.Println(fmt.Sprintf("%d fornecedores no resultado:", totalSuppliers))
+	}
+	fmt.Println()
+
+	for i := range result {
+		if i == "sem_fornecedor" {
+			continue
+		}
+
+		fmt.Println(fmt.Sprintf("%s", i))
+		fmt.Println(fmt.Sprintf("%d produtos", len(result[i])))
+		fmt.Println()
+	}
+
+	if data, ok := result["sem_fornecedor"]; ok {
+		fmt.Println(fmt.Sprintf("Produtos sem fornecedor disponível: %d.", len(data)))
+	}
+	fmt.Println()
+
+	writeFinalResult(result)
+}
+
+func writeFinalResult(result map[string][]src.Product) {
+	for n, products := range result {
+		f := excelize.NewFile()
+		decimalStyle, _ := f.NewStyle(&excelize.Style{DecimalPlaces: 2, NumFmt: 4})
+
+		f.SetSheetName("Sheet1", n)
+		f.SetActiveSheet(0)
+
+		f.SetCellValue(n, "A1", "PRODUTO")
+		f.SetCellValue(n, "B1", "QTD")
+		f.SetCellValue(n, "C1", "PREÇO")
+
+		f.SetColWidth(n, "A", "A", 60)
+		f.SetColWidth(n, "B", "B", 8)
+		f.SetColWidth(n, "C", "C", 14)
+		f.SetRowHeight(n, 1, 30)
+
+		f.SetColStyle(n, "C", decimalStyle)
+
+		for i, product := range products {
+			f.SetCellValue(n, fmt.Sprintf("A%d", i+2), product.Name)
+			f.SetCellValue(n, fmt.Sprintf("B%d", i+2), product.Quantity)
+			f.SetCellValue(n, fmt.Sprintf("C%d", i+2), product.Price)
+		}
+
+		// Save
+		fileName := fmt.Sprintf("resultado/%s.xlsx", n)
+		if err := f.SaveAs(fileName); err != nil {
+			fmt.Println("ERRRO - Erro ao salvar arquivo de resultado. Verifique suas permissões.")
+
+			exitProgram()
+		}
+
+		fmt.Println(fmt.Sprintf("Arquivo '%s' foi criado com sucesso.", fileName))
+	}
 }
 
 func computeGlobalSheet(folder string) {
@@ -131,31 +209,29 @@ func computeGlobalSheet(folder string) {
 	writeGlobalSheet(suppliers)
 }
 
-var globalFile = excelize.NewFile()
-var alignmentStyle, _ = globalFile.NewStyle(&excelize.Style{Alignment: &excelize.Alignment{JustifyLastLine: true, ReadingOrder: 0, RelativeIndent: 1, ShrinkToFit: true, WrapText: true}})
-var decimalStyle, _ = globalFile.NewStyle(&excelize.Style{DecimalPlaces: 2, NumFmt: 4})
-
-var redStyle, _ = globalFile.NewConditionalStyle(`{"fill":{"type":"pattern","color":["ff0000"],"pattern":1}}`)
-var yellowStyle, _ = globalFile.NewConditionalStyle(`{"fill":{"type":"pattern","color":["ffff00"],"pattern":1}}`)
-var greenStyle, _ = globalFile.NewConditionalStyle(`{"fill":{"type":"pattern","color":["#00FF00"],"pattern":1}}`)
-
 func writeGlobalSheet(suppliers []*src.Supplier) {
+	f := excelize.NewFile()
+	alignmentStyle, _ := f.NewStyle(&excelize.Style{Alignment: &excelize.Alignment{JustifyLastLine: true, ReadingOrder: 0, RelativeIndent: 1, ShrinkToFit: true, WrapText: true}})
+	decimalStyle, _ := f.NewStyle(&excelize.Style{DecimalPlaces: 2, NumFmt: 4})
+
+	redStyle, _ := f.NewConditionalStyle(`{"fill":{"type":"pattern","color":["ff0000"],"pattern":1}}`)
+	yellowStyle, _ := f.NewConditionalStyle(`{"fill":{"type":"pattern","color":["ffff00"],"pattern":1}}`)
+	greenStyle, _ := f.NewConditionalStyle(`{"fill":{"type":"pattern","color":["#00FF00"],"pattern":1}}`)
+
 	n := "Geral"
 
-	globalFile.SetSheetName("Sheet1", n)
-	globalFile.SetActiveSheet(0)
+	f.SetSheetName("Sheet1", n)
+	f.SetActiveSheet(0)
 
-	os.Mkdir("resultado", 0755)
+	f.SetCellValue(n, "A1", "PRODUTO")
+	f.SetCellValue(n, "B1", "QTD")
 
-	globalFile.SetCellValue(n, "A1", "PRODUTO")
-	globalFile.SetCellValue(n, "B1", "QTD")
+	f.SetColWidth(n, "A", "A", 60)
+	f.SetColWidth(n, "B", "B", 8)
+	f.SetColWidth(n, "C", "Z", 14)
+	f.SetRowHeight(n, 1, 30)
 
-	globalFile.SetColWidth(n, "A", "A", 60)
-	globalFile.SetColWidth(n, "B", "B", 8)
-	globalFile.SetColWidth(n, "C", "Z", 14)
-	globalFile.SetRowHeight(n, 1, 30)
-
-	globalFile.SetColStyle(n, "B:Z", alignmentStyle)
+	f.SetColStyle(n, "B:Z", alignmentStyle)
 
 	// Write product names
 	products := make([]string, len(suppliers[0].Products))
@@ -168,8 +244,8 @@ func writeGlobalSheet(suppliers []*src.Supplier) {
 	sort.Strings(products)
 
 	for i := range products {
-		globalFile.SetCellValue(n, fmt.Sprintf("A%d", i+2), products[i])
-		globalFile.SetCellValue(n, fmt.Sprintf("B%d", i+2), suppliers[0].Products[products[i]].Quantity)
+		f.SetCellValue(n, fmt.Sprintf("A%d", i+2), products[i])
+		f.SetCellValue(n, fmt.Sprintf("B%d", i+2), suppliers[0].Products[products[i]].Quantity)
 	}
 
 	// Write supplier prices
@@ -183,13 +259,13 @@ loop:
 
 		supplier := suppliers[supplierIndex]
 
-		globalFile.SetCellValue(n, fmt.Sprintf("%c1", supplierColumn), supplier.Name)
+		f.SetCellValue(n, fmt.Sprintf("%c1", supplierColumn), supplier.Name)
 
 		for i := range products {
 			price := supplier.Products[products[i]].Price
 
 			if price > 0 {
-				globalFile.SetCellValue(n, fmt.Sprintf("%c%d", supplierColumn, i+2), price)
+				f.SetCellValue(n, fmt.Sprintf("%c%d", supplierColumn, i+2), price)
 			}
 		}
 
@@ -200,62 +276,64 @@ loop:
 
 	// Best price
 	bestPriceColumn := supplierColumn + 3
-	globalFile.SetCellValue(n, fmt.Sprintf("%c1", bestPriceColumn), "Melhor Preço")
+	f.SetCellValue(n, fmt.Sprintf("%c1", bestPriceColumn), "Melhor Preço")
 
 	for i := 2; i < len(products)+2; i++ {
-		globalFile.SetCellFormula(n, fmt.Sprintf("%c%d", bestPriceColumn, i), fmt.Sprintf("MIN(C%d:%c%d)", i, supplierColumn, i))
+		f.SetCellFormula(n, fmt.Sprintf("%c%d", bestPriceColumn, i), fmt.Sprintf("MIN(C%d:%c%d)", i, supplierColumn, i))
 	}
 
 	// Best supplier
 	bestSupplierColumn := supplierColumn + 4
-	globalFile.SetCellValue(n, fmt.Sprintf("%c1", bestSupplierColumn), "Fornecedor")
+	f.SetCellValue(n, fmt.Sprintf("%c1", bestSupplierColumn), "Fornecedor")
 
 	for i := 2; i < len(products)+2; i++ {
-		globalFile.SetCellFormula(n, fmt.Sprintf("%c%d", bestSupplierColumn, i), fmt.Sprintf("INDEX($C$1:$%c$1,MATCH(MIN(C%d:%c%d),C%d:%c%d,0))", supplierColumn, i, supplierColumn, i, i, supplierColumn, i))
+		f.SetCellFormula(n, fmt.Sprintf("%c%d", bestSupplierColumn, i), fmt.Sprintf("INDEX($C$1:$%c$1,MATCH(MIN(C%d:%c%d),C%d:%c%d,0))", supplierColumn, i, supplierColumn, i, i, supplierColumn, i))
 	}
 
 	// Worse price
 	worsePriceColumn := supplierColumn + 5
-	globalFile.SetCellValue(n, fmt.Sprintf("%c1", worsePriceColumn), "Pior Preço")
+	f.SetCellValue(n, fmt.Sprintf("%c1", worsePriceColumn), "Pior Preço")
 
 	for i := 2; i < len(products)+2; i++ {
-		globalFile.SetCellFormula(n, fmt.Sprintf("%c%d", worsePriceColumn, i), fmt.Sprintf("MAX(C%d:%c%d)", i, supplierColumn, i))
+		f.SetCellFormula(n, fmt.Sprintf("%c%d", worsePriceColumn, i), fmt.Sprintf("MAX(C%d:%c%d)", i, supplierColumn, i))
 	}
 
 	// Worse minus best price
 	diffPriceColumn := supplierColumn + 6
-	globalFile.SetCellValue(n, fmt.Sprintf("%c1", diffPriceColumn), "Diferença")
+	f.SetCellValue(n, fmt.Sprintf("%c1", diffPriceColumn), "Diferença")
 
 	for i := 2; i < len(products)+2; i++ {
 		cell := fmt.Sprintf("%c%d", diffPriceColumn, i)
-		globalFile.SetCellFormula(n, cell, fmt.Sprintf("MAX(C%d:%c%d)-MIN(C%d:%c%d)", i, supplierColumn, i, i, supplierColumn, i))
-		globalFile.SetCellStyle(n, cell, cell, decimalStyle)
+		f.SetCellFormula(n, cell, fmt.Sprintf("MAX(C%d:%c%d)-MIN(C%d:%c%d)", i, supplierColumn, i, i, supplierColumn, i))
+		f.SetCellStyle(n, cell, cell, decimalStyle)
 	}
 
 	// Percentage of price difference
 	pricePercentageColumn := supplierColumn + 7
-	globalFile.SetCellValue(n, fmt.Sprintf("%c1", pricePercentageColumn), "% Diferença")
+	f.SetCellValue(n, fmt.Sprintf("%c1", pricePercentageColumn), "% Diferença")
 
 	for i := 2; i < len(products)+2; i++ {
 		cell := fmt.Sprintf("%c%d", pricePercentageColumn, i)
-		globalFile.SetCellFormula(n, cell, fmt.Sprintf("100*%c%d/%c%d", diffPriceColumn, i, bestPriceColumn, i))
-		globalFile.SetCellStyle(n, cell, cell, decimalStyle)
+		f.SetCellFormula(n, cell, fmt.Sprintf("100*%c%d/%c%d", diffPriceColumn, i, bestPriceColumn, i))
+		f.SetCellStyle(n, cell, cell, decimalStyle)
 	}
-	globalFile.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"50"}]`, redStyle))
-	globalFile.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"20"}]`, yellowStyle))
-	globalFile.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":"<=","format":%d,"value":"20"}]`, greenStyle))
+	f.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"50"}]`, redStyle))
+	f.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"20"}]`, yellowStyle))
+	f.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":"<=","format":%d,"value":"20"}]`, greenStyle))
 
 	// Auto Filter
-	globalFile.AutoFilter(n, "A1", fmt.Sprintf("%c1", pricePercentageColumn), "")
+	f.AutoFilter(n, "A1", fmt.Sprintf("%c1", pricePercentageColumn), "")
 
 	// Save
-	if err := globalFile.SaveAs("resultado/geral.xlsx"); err != nil {
+	os.Mkdir("resultado", 0755)
+
+	if err := f.SaveAs("resultado/resultado_geral.xlsx"); err != nil {
 		fmt.Println("ERRRO - Erro ao salvar arquivo de resultado. Verifique suas permissões.")
 
 		exitProgram()
 	}
 
-	fmt.Println("Arquivo 'resultado/geral.xlsx' foi criado com sucesso.")
+	fmt.Println("Arquivo 'resultado/resultado_geral.xlsx' foi criado com sucesso.")
 }
 
 func exitWithError(err error) {
@@ -294,7 +372,7 @@ func getDirFilesCount(name string) int {
 	}
 	defer f.Close()
 
-	names, err := f.Readdirnames(1)
+	names, err := f.Readdirnames(-1)
 	if err == io.EOF {
 		return 0
 	}

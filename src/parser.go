@@ -23,6 +23,68 @@ import (
 	"github.com/360EntSecGroup-Skylar/excelize/v2"
 )
 
+func ParseGlobalFile(file *excelize.File) map[string][]Product {
+	rows, err := getRows(file, 0)
+
+	if err != nil {
+		fmt.Println("Error loading product sheet.")
+
+		return nil
+	}
+
+	// Skip header
+	rows.Next()
+	headers, _ := rows.Columns()
+
+	supplierIndex := make(map[int]string)
+	result := make(map[string][]Product)
+
+	for i := 2; i < len(headers); i++ {
+		if headers[i] == "" {
+			break
+		}
+
+		supplierIndex[i] = headers[i]
+		result[headers[i]] = make([]Product, 0)
+	}
+
+	for rows.Next() {
+		row, _ := rows.Columns()
+
+		if len(row) < 3 || row[0] == "" || row[1] == "" {
+			continue
+		}
+
+		product := &Product{
+			Name:     row[0],
+			Quantity: row[1],
+			Price:    float64(0),
+		}
+
+		minSupplier := ""
+		for i := 2; i < len(result)+2; i++ {
+			price := getNumber(row[i], false)
+
+			if price == 0 {
+				continue
+			}
+
+			if product.Price == 0 || price < product.Price {
+				product.Price = price
+				minSupplier = supplierIndex[i]
+			}
+		}
+
+		if product.Price == 0 {
+			result["sem_fornecedor"] = append(result["sem_fornecedor"], *product)
+		} else {
+			result[minSupplier] = append(result[minSupplier], *product)
+		}
+	}
+
+	return result
+}
+
 func ParseSuppliers(files []*excelize.File) []*Supplier {
 	result := make([]*Supplier, 0)
 
@@ -65,7 +127,7 @@ func ParseSuppliers(files []*excelize.File) []*Supplier {
 			product := &Product{
 				Name:     row[0],
 				Quantity: row[1],
-				Price:    getNumber(row[2]),
+				Price:    getNumber(row[2], true),
 			}
 
 			supplier.Products[product.Name] = product
@@ -89,33 +151,27 @@ func getRows(file *excelize.File, index int) (*excelize.Rows, error) {
 	return rows, nil
 }
 
-func isNumber(value string) bool {
-	_, err := formatNumber(value)
+func getNumber(value string, removeInvalidChars bool) float64 {
+	result, err := formatNumber(value, removeInvalidChars)
 
-	return err == nil
-}
-
-func getNumber(value string) float64 {
-	result, err := formatNumber(value)
-
-	if err != nil {
-		fmt.Println("Error parsing value.", err.Error())
+	if err != nil && removeInvalidChars {
+		fmt.Println("ERRO - Número em formato inválido.", err.Error())
 	}
 
 	return result
 }
 
-func formatNumber(value string) (float64, error) {
+func formatNumber(value string, removeInvalidChars bool) (float64, error) {
 	if strings.Contains(value, ",") {
 		value = strings.Replace(value, ".", "", -1)
 		value = strings.Replace(value, ",", ".", 1)
 	}
 
-	value = strings.Replace(value, "%", "", 1)
-
 	regex, _ := regexp.Compile("[^\\d\\.]+")
 
-	value = regex.ReplaceAllString(value, "")
+	if removeInvalidChars {
+		value = regex.ReplaceAllString(value, "")
+	}
 
 	if value == "" {
 		return 0, nil
