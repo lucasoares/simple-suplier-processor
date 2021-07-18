@@ -233,19 +233,37 @@ func writeGlobalSheet(suppliers []*src.Supplier) {
 
 	f.SetColStyle(n, "B:Z", alignmentStyle)
 
-	// Write product names
-	products := make([]string, len(suppliers[0].Products))
-	i := 0
-	for k := range suppliers[0].Products {
-		products[i] = k
-		i++
+	productQuantity := make(map[string]string, 0)
+
+	// Check if there is any priced product and get all product names
+	pricedProducts := false
+	for supplierIndex := range suppliers {
+		supplier := suppliers[supplierIndex]
+
+		for i := range supplier.Products {
+			price := supplier.Products[i].Price
+
+			productQuantity[supplier.Products[i].Name] = supplier.Products[i].Quantity
+
+			if price > 0 {
+				pricedProducts = true
+			}
+		}
 	}
 
+	// Sort product names
+	products := make([]string, len(productQuantity))
+	i := 0
+	for product := range productQuantity {
+		products[i] = product
+		i++
+	}
 	sort.Strings(products)
 
+	// Write product names
 	for i := range products {
 		f.SetCellValue(n, fmt.Sprintf("A%d", i+2), products[i])
-		f.SetCellValue(n, fmt.Sprintf("B%d", i+2), suppliers[0].Products[products[i]].Quantity)
+		f.SetCellValue(n, fmt.Sprintf("B%d", i+2), productQuantity[products[i]])
 	}
 
 	// Write supplier prices
@@ -259,10 +277,17 @@ loop:
 
 		supplier := suppliers[supplierIndex]
 
-		f.SetCellValue(n, fmt.Sprintf("%c1", supplierColumn), supplier.Name)
+		if pricedProducts {
+			f.SetCellValue(n, fmt.Sprintf("%c1", supplierColumn), supplier.Name)
+		}
 
 		for i := range products {
-			price := supplier.Products[products[i]].Price
+			supplierProduct := supplier.Products[products[i]]
+
+			var price float64
+			if supplierProduct != nil {
+				price = supplier.Products[products[i]].Price
+			}
 
 			if price > 0 {
 				f.SetCellValue(n, fmt.Sprintf("%c%d", supplierColumn, i+2), price)
@@ -274,55 +299,60 @@ loop:
 
 	supplierColumn--
 
-	// Best price
-	bestPriceColumn := supplierColumn + 3
-	f.SetCellValue(n, fmt.Sprintf("%c1", bestPriceColumn), "Melhor Preço")
+	if pricedProducts {
+		// Best price
+		bestPriceColumn := supplierColumn + 3
+		f.SetCellValue(n, fmt.Sprintf("%c1", bestPriceColumn), "Melhor Preço")
 
-	for i := 2; i < len(products)+2; i++ {
-		f.SetCellFormula(n, fmt.Sprintf("%c%d", bestPriceColumn, i), fmt.Sprintf("MIN(C%d:%c%d)", i, supplierColumn, i))
+		for i := 2; i < len(products)+2; i++ {
+			f.SetCellFormula(n, fmt.Sprintf("%c%d", bestPriceColumn, i), fmt.Sprintf("MIN(C%d:%c%d)", i, supplierColumn, i))
+		}
+
+		// Best supplier
+		bestSupplierColumn := supplierColumn + 4
+		f.SetCellValue(n, fmt.Sprintf("%c1", bestSupplierColumn), "Fornecedor")
+
+		for i := 2; i < len(products)+2; i++ {
+			f.SetCellFormula(n, fmt.Sprintf("%c%d", bestSupplierColumn, i), fmt.Sprintf("INDEX($C$1:$%c$1,MATCH(MIN(C%d:%c%d),C%d:%c%d,0))", supplierColumn, i, supplierColumn, i, i, supplierColumn, i))
+		}
+
+		// Worse price
+		worsePriceColumn := supplierColumn + 5
+		f.SetCellValue(n, fmt.Sprintf("%c1", worsePriceColumn), "Pior Preço")
+
+		for i := 2; i < len(products)+2; i++ {
+			f.SetCellFormula(n, fmt.Sprintf("%c%d", worsePriceColumn, i), fmt.Sprintf("MAX(C%d:%c%d)", i, supplierColumn, i))
+		}
+
+		// Worse minus best price
+		diffPriceColumn := supplierColumn + 6
+		f.SetCellValue(n, fmt.Sprintf("%c1", diffPriceColumn), "Diferença")
+
+		for i := 2; i < len(products)+2; i++ {
+			cell := fmt.Sprintf("%c%d", diffPriceColumn, i)
+			f.SetCellFormula(n, cell, fmt.Sprintf("MAX(C%d:%c%d)-MIN(C%d:%c%d)", i, supplierColumn, i, i, supplierColumn, i))
+			f.SetCellStyle(n, cell, cell, decimalStyle)
+		}
+
+		// Percentage of price difference
+		pricePercentageColumn := supplierColumn + 7
+		f.SetCellValue(n, fmt.Sprintf("%c1", pricePercentageColumn), "% Diferença")
+
+		for i := 2; i < len(products)+2; i++ {
+			cell := fmt.Sprintf("%c%d", pricePercentageColumn, i)
+			f.SetCellFormula(n, cell, fmt.Sprintf("100*%c%d/%c%d", diffPriceColumn, i, bestPriceColumn, i))
+			f.SetCellStyle(n, cell, cell, decimalStyle)
+		}
+		f.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"50"}]`, redStyle))
+		f.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"20"}]`, yellowStyle))
+		f.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":"<=","format":%d,"value":"20"}]`, greenStyle))
+
+		// Auto Filter
+		f.AutoFilter(n, "A1", fmt.Sprintf("%c1", pricePercentageColumn), "")
+	} else {
+		// Auto Filter
+		f.AutoFilter(n, "A1", "B1", "")
 	}
-
-	// Best supplier
-	bestSupplierColumn := supplierColumn + 4
-	f.SetCellValue(n, fmt.Sprintf("%c1", bestSupplierColumn), "Fornecedor")
-
-	for i := 2; i < len(products)+2; i++ {
-		f.SetCellFormula(n, fmt.Sprintf("%c%d", bestSupplierColumn, i), fmt.Sprintf("INDEX($C$1:$%c$1,MATCH(MIN(C%d:%c%d),C%d:%c%d,0))", supplierColumn, i, supplierColumn, i, i, supplierColumn, i))
-	}
-
-	// Worse price
-	worsePriceColumn := supplierColumn + 5
-	f.SetCellValue(n, fmt.Sprintf("%c1", worsePriceColumn), "Pior Preço")
-
-	for i := 2; i < len(products)+2; i++ {
-		f.SetCellFormula(n, fmt.Sprintf("%c%d", worsePriceColumn, i), fmt.Sprintf("MAX(C%d:%c%d)", i, supplierColumn, i))
-	}
-
-	// Worse minus best price
-	diffPriceColumn := supplierColumn + 6
-	f.SetCellValue(n, fmt.Sprintf("%c1", diffPriceColumn), "Diferença")
-
-	for i := 2; i < len(products)+2; i++ {
-		cell := fmt.Sprintf("%c%d", diffPriceColumn, i)
-		f.SetCellFormula(n, cell, fmt.Sprintf("MAX(C%d:%c%d)-MIN(C%d:%c%d)", i, supplierColumn, i, i, supplierColumn, i))
-		f.SetCellStyle(n, cell, cell, decimalStyle)
-	}
-
-	// Percentage of price difference
-	pricePercentageColumn := supplierColumn + 7
-	f.SetCellValue(n, fmt.Sprintf("%c1", pricePercentageColumn), "% Diferença")
-
-	for i := 2; i < len(products)+2; i++ {
-		cell := fmt.Sprintf("%c%d", pricePercentageColumn, i)
-		f.SetCellFormula(n, cell, fmt.Sprintf("100*%c%d/%c%d", diffPriceColumn, i, bestPriceColumn, i))
-		f.SetCellStyle(n, cell, cell, decimalStyle)
-	}
-	f.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"50"}]`, redStyle))
-	f.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":">","format":%d,"value":"20"}]`, yellowStyle))
-	f.SetConditionalFormat(n, fmt.Sprintf("%c2:%c%d", pricePercentageColumn, pricePercentageColumn, len(products)+1), fmt.Sprintf(`[{"type":"cell","criteria":"<=","format":%d,"value":"20"}]`, greenStyle))
-
-	// Auto Filter
-	f.AutoFilter(n, "A1", fmt.Sprintf("%c1", pricePercentageColumn), "")
 
 	// Save
 	os.Mkdir("resultado", 0755)

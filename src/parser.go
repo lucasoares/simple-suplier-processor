@@ -120,14 +120,23 @@ func ParseSuppliers(files []*excelize.File) []*Supplier {
 		for rows.Next() {
 			row, _ := rows.Columns()
 
-			if len(row) < 3 || row[0] == "" || row[1] == "" {
+			if len(row) == 0 {
 				continue
+			}
+
+			if row[0] == "" || row[1] == "" {
+				continue
+			}
+
+			var price string
+			if len(row) >= 3 {
+				price = row[2]
 			}
 
 			product := &Product{
 				Name:     row[0],
 				Quantity: row[1],
-				Price:    getNumber(row[2], true),
+				Price:    getNumber(price, true),
 			}
 
 			supplier.Products[product.Name] = product
@@ -152,6 +161,10 @@ func getRows(file *excelize.File, index int) (*excelize.Rows, error) {
 }
 
 func getNumber(value string, removeInvalidChars bool) float64 {
+	if value == "" {
+		return 0
+	}
+
 	result, err := formatNumber(value, removeInvalidChars)
 
 	if err != nil && removeInvalidChars {
